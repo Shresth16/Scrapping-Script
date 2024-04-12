@@ -1,42 +1,75 @@
-import os
-import openpyxl
-import json
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import csv
 
 
-def read_data_from_excel(excel_file):
-    extracted_data = []
-    workbook = openpyxl.load_workbook(excel_file)
-    sheet = workbook.active
+# Function to scrape data from a single URL
+def scrape_data(url):
+    try:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content, 'html.parser')
 
-    for row in sheet.iter_rows(values_only=True):
-        # Assuming the first column contains text data
-        text_data = row[0]
+        # Extract title
+        title = soup.title.text.strip() if soup.title else ""
 
-        # Assuming the second column contains image URLs
-        images = []  # Placeholder for image URLs
-        # Assuming the third column contains link URLs
-        links = []  # Placeholder for link URLs
+        # Extract paragraph text
+        paragraphs = soup.find_all('p')
+        text = ' '.join([p.get_text().strip() for p in paragraphs])
 
-        # Append data to extracted_data
-        page_data = {
-            'text': text_data,
-            'images': images,
-            'links': links
-        }
-        extracted_data.append(page_data)
+        # Extract image URLs
+        images = [img['src'] for img in soup.find_all('img', src=True)]
 
-    return extracted_data
+        return {'Title': title, 'Text': text, 'Images': images, 'URL': url}
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+        return None
 
 
-def save_data_to_json(data, output_file):
-    with open(output_file, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
+# Function to read links from Excel and scrape data
+def scrape_links_from_excel(excel_file):
+    try:
+        # Read links from Excel file (assuming they are in the first row)
+        df = pd.read_excel(excel_file, header=None, nrows=1)
+        links = df.values.flatten()
+
+        # Scrape data from each link
+        scraped_data = []
+        for link in links:
+            if isinstance(link, str):  # Check if it's a valid link
+                scraped_data.append(scrape_data(link))
+
+        return scraped_data
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return None
+
+
+# Function to store scraped data in CSV file
+def save_to_csv(data, csv_file):
+    try:
+        with open(csv_file, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=['Title', 'Text', 'Images', 'URL'])
+            writer.writeheader()
+            for item in data:
+                writer.writerow(item)
+        print(f"Scraped data saved to {csv_file}")
+    except Exception as e:
+        print(f"Error saving to CSV file: {e}")
+
+
+# Main function
+def main():
+    excel_file = r'C:\\Users\\shres\\Downloads\\sd.xlsx'  # Provide the path to your Excel file
+    csv_file = 'scraped_data2.csv'  # Output CSV file
+
+    # Scrape data from links in Excel file
+    scraped_data = scrape_links_from_excel(excel_file)
+
+    if scraped_data:
+        # Save scraped data to CSV file
+        save_to_csv(scraped_data, csv_file)
 
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    excel_file = os.path.join(script_dir,"C:\\Users\\shres\\Downloads\\Scrapping Python Assigment- Flair Insights.xlsx")
-    output_file = "scraped_data.json"
-
-    extracted_data = read_data_from_excel(excel_file)
-    save_data_to_json(extracted_data, output_file)
+    main()
